@@ -1,6 +1,7 @@
 # Import all needed libraries
 import tensorflow as tf
 from tensorflow.contrib import rnn
+from tensorflow.contrib import cudnn_rnn
 import numpy as np
 import time
 
@@ -38,7 +39,7 @@ out_bias = tf.Variable(tf.random_normal([vocab_size]))
 x = tf.placeholder("float", [seq_length, batch_size, vocab_size])
 y = tf.placeholder("float", [seq_length, batch_size, vocab_size])
 input = tf.unstack(x, axis=0)
-lstm_layer = rnn.LSTMCell(hidden_dim, forget_bias=1)
+lstm_layer = cudnn_rnn.CudnnLSTM(num_layers=1, num_units=hidden_dim)
 outputs, _ = rnn.static_rnn(lstm_layer, input, dtype="float32")
 logits = [tf.matmul(output, out_weights) + out_bias for output in outputs]
 probabilities = [tf.nn.softmax(logit) for logit in logits]
