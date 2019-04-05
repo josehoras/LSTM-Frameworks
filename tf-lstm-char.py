@@ -37,9 +37,9 @@ out_bias = tf.Variable(tf.random_normal([vocab_size]))
 # model architecture
 x = tf.placeholder("float", [seq_length, batch_size, vocab_size])
 y = tf.placeholder("float", [seq_length, batch_size, vocab_size])
-input = tf.unstack(x, axis=0)
 lstm_layer = rnn.LSTMCell(hidden_dim, forget_bias=1)
-outputs, _ = rnn.static_rnn(lstm_layer, input, dtype="float32")
+outputs, _ = tf.nn.dynamic_rnn(lstm_layer, x, dtype="float32")
+outputs = tf.unstack(outputs, axis=0)
 logits = [tf.matmul(output, out_weights) + out_bias for output in outputs]
 probabilities = [tf.nn.softmax(logit) for logit in logits]
 
@@ -51,10 +51,9 @@ training_operation = optimizer.minimize(loss)
 
 # same with chars to generate predictions
 char_x = tf.placeholder("float", [1, batch_size, vocab_size])
-char_input = tf.unstack(char_x, axis=0)
-char_out, _ = rnn.static_rnn(lstm_layer, char_input, dtype="float32")
-char_logits = [tf.matmul(char_o, out_weights) + out_bias for char_o in char_out]
-char_prob = [tf.nn.softmax(char_logit) for char_logit in char_logits]
+char_out, _ = tf.nn.dynamic_rnn(lstm_layer, char_x, dtype="float32")
+char_logits = tf.matmul(char_out[0], out_weights) + out_bias
+char_prob = tf.nn.softmax(char_logits)
 
 # training
 p = 0
@@ -82,7 +81,7 @@ with tf.Session() as sess:
                 txt = ''
                 for i in range(200):
                     probs = sess.run(char_prob, feed_dict={char_x: seed})
-                    pred = np.random.choice(range(vocab_size), p=probs[0][0])
+                    pred = np.random.choice(range(vocab_size), p=probs[0])
                     seed = np.expand_dims(encode([pred]), axis=0)
                     character = ix_to_char[pred]
                     txt = txt + character
