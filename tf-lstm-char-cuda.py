@@ -38,9 +38,12 @@ out_bias = tf.Variable(tf.random_normal([vocab_size]))
 # model architecture
 x = tf.placeholder("float", [seq_length, batch_size, vocab_size])
 y = tf.placeholder("float", [seq_length, batch_size, vocab_size])
-input = tf.unstack(x, axis=0)
+
 lstm_layer = cudnn_rnn.CudnnLSTM(num_layers=1, num_units=hidden_dim)
-outputs, _ = rnn.static_rnn(lstm_layer, input, dtype="float32")
+outputs, _ = lstm_layer(x)
+print(outputs.shape)
+outputs = tf.unstack(outputs, axis=0)
+print(len(outputs), outputs[0].shape)
 logits = [tf.matmul(output, out_weights) + out_bias for output in outputs]
 probabilities = [tf.nn.softmax(logit) for logit in logits]
 
@@ -52,8 +55,8 @@ training_operation = optimizer.minimize(loss)
 
 # same with chars to generate predictions
 char_x = tf.placeholder("float", [1, batch_size, vocab_size])
-char_input = tf.unstack(char_x, axis=0)
-char_out, _ = rnn.static_rnn(lstm_layer, char_input, dtype="float32")
+char_out, _ = lstm_layer(char_x)
+char_out = tf.unstack(char_out, axis=0)
 char_logits = [tf.matmul(char_o, out_weights) + out_bias for char_o in char_out]
 char_prob = [tf.nn.softmax(char_logit) for char_logit in char_logits]
 
@@ -62,32 +65,31 @@ p = 0
 smooth_loss = (-np.log(1.0 / vocab_size) * seq_length) / seq_length  # loss at iteration 0
 init = tf.global_variables_initializer()
 with tf.Session() as sess:
-    with tf.device("/device:CPU:0"):  # "/cpu:0" or "/gpu:0"
-        start = time.time()
-        print("* Second Session *")
-        sess.run(init)
-        for p in range(10001):
-            if p + seq_length + 1 >= len(data) or p == 0:
-                sess.run(lstm_layer.zero_state(batch_size, dtype=tf.float32)) # reset RNN memory
-                p = 0 # go from start of data
-            a = [char_to_ix[char] for char in data[p:p+seq_length]]  # Sequence of inputs (numbers)
-            t = [char_to_ix[char] for char in data[p+1:p+1+seq_length]]
-            inputs = np.expand_dims(encode(a), axis=1)
-            targets = np.expand_dims(encode(t), axis=1)
-            los, _ = sess.run([loss, training_operation], feed_dict={x: inputs, y: targets})
-            smooth_loss = smooth_loss * 0.999 + los * 0.001
-            if p % 5000 == 0:
-                print()
-                print(p, ": ", smooth_loss)
-                seed = np.expand_dims(inputs[-1], axis=0)
-                txt = ''
-                for i in range(200):
-                    probs = sess.run(char_prob, feed_dict={char_x: seed})
-                    pred = np.random.choice(range(vocab_size), p=probs[0][0])
-                    seed = np.expand_dims(encode([pred]), axis=0)
-                    character = ix_to_char[pred]
-                    txt = txt + character
-                print(txt)
+    start = time.time()
+    print("* Second Session *")
+    sess.run(init)
+    for p in range(10001):
+        if p + seq_length + 1 >= len(data) or p == 0:
+            # sess.run(lstm_layer.zero_state(batch_size, dtype=tf.float32)) # reset RNN memory
+            p = 0 # go from start of data
+        a = [char_to_ix[char] for char in data[p:p+seq_length]]  # Sequence of inputs (numbers)
+        t = [char_to_ix[char] for char in data[p+1:p+1+seq_length]]
+        inputs = np.expand_dims(encode(a), axis=1)
+        targets = np.expand_dims(encode(t), axis=1)
+        los, _ = sess.run([loss, training_operation], feed_dict={x: inputs, y: targets})
+        smooth_loss = smooth_loss * 0.999 + los * 0.001
+        if p % 5000 == 0:
+            print()
+            print(p, ": ", smooth_loss)
+            seed = np.expand_dims(inputs[-1], axis=0)
+            txt = ''
+            for i in range(200):
+                probs = sess.run(char_prob, feed_dict={char_x: seed})
+                pred = np.random.choice(range(vocab_size), p=probs[0][0])
+                seed = np.expand_dims(encode([pred]), axis=0)
+                character = ix_to_char[pred]
+                txt = txt + character
+            print(txt)
 end = time.time()
 print("      This thing has taken all this time: ", end - start)
 
