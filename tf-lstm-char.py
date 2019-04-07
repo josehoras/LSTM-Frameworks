@@ -14,6 +14,7 @@ data_size, vocab_size = len(data), len(chars)
 print('data has %d characters, %d unique.' % (data_size, vocab_size))
 print(chars)
 
+
 # 1-of-k encoding
 def encode(seq):
     enc = np.zeros((1, vocab_size), dtype=int)
@@ -26,20 +27,20 @@ def encode(seq):
 
 
 # hyperparameters
-seq_length = 5
+seq_length = 10
 hidden_dim = 64
 batch_size = 1
-
-# weights and biases of appropriate shape to accomplish above task
-out_weights = tf.Variable(tf.random_normal([hidden_dim, vocab_size]))
-out_bias = tf.Variable(tf.random_normal([vocab_size]))
 
 # model architecture
 x = tf.placeholder("float", [seq_length, batch_size, vocab_size])
 y = tf.placeholder("float", [seq_length, batch_size, vocab_size])
+
 lstm_layer = rnn.LSTMCell(hidden_dim, forget_bias=1)
-outputs, _ = tf.nn.dynamic_rnn(lstm_layer, x, dtype="float32")
+outputs, _ = tf.nn.dynamic_rnn(lstm_layer, x, dtype=tf.float32)
 outputs = tf.unstack(outputs, axis=0)
+
+out_weights = tf.Variable(tf.random_normal([hidden_dim, vocab_size]))
+out_bias = tf.Variable(tf.random_normal([vocab_size]))
 logits = [tf.matmul(output, out_weights) + out_bias for output in outputs]
 probabilities = [tf.nn.softmax(logit) for logit in logits]
 
@@ -47,37 +48,52 @@ probabilities = [tf.nn.softmax(logit) for logit in logits]
 cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=logits)
 loss = tf.reduce_mean(cross_entropy)
 optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
-training_operation = optimizer.minimize(loss)
+training = optimizer.minimize(loss)
+saver = tf.train.Saver()
 
-# same with chars to generate predictions
+# same with single char to generate predictions
 char_x = tf.placeholder("float", [1, batch_size, vocab_size])
 char_out, _ = tf.nn.dynamic_rnn(lstm_layer, char_x, dtype="float32")
 char_logits = tf.matmul(char_out[0], out_weights) + out_bias
 char_prob = tf.nn.softmax(char_logits)
 
+
 # training
+model_file = './shakespeare_model'
+model = True
 p = 0
 smooth_loss = (-np.log(1.0 / vocab_size) * seq_length) / seq_length  # loss at iteration 0
-init = tf.global_variables_initializer()
-with tf.Session() as sess:
-    with tf.device("/device:CPU:0"):  # "/cpu:0" or "/gpu:0"
+train_sess = False
+if train_sess:
+    with tf.Session() as sess:
         start = time.time()
         print("* Second Session *")
-        sess.run(init)
+        if model:
+            saver = tf.train.import_meta_graph('shakespeare_model.meta')
+            saver.restore(sess, model_file)
+            graph = tf.get_default_graph()
+            print("Model restored...")
+            all_vars = tf.trainable_variables()
+            for i in range(len(all_vars)):
+                name = all_vars[i].name
+                values = sess.run(name)
+                print('name', name)
+                print('shape', values.shape)
+        else:
+            sess.run(tf.global_variables_initializer())
         for p in range(10001):
-            if p + seq_length + 1 >= len(data) or p == 0:
-                sess.run(lstm_layer.zero_state(batch_size, dtype=tf.float32)) # reset RNN memory
-                p = 0 # go from start of data
-            a = [char_to_ix[char] for char in data[p:p+seq_length]]  # Sequence of inputs (numbers)
-            t = [char_to_ix[char] for char in data[p+1:p+1+seq_length]]
+            if p + seq_length + 1 >= len(data):
+                p = 0 # go to start of data
+            a = [char_to_ix[char] for char in data[p: p + seq_length]]  # Sequence of inputs (numbers)
+            t = [char_to_ix[char] for char in data[p + 1: p + 1 + seq_length]]
             inputs = np.expand_dims(encode(a), axis=1)
             targets = np.expand_dims(encode(t), axis=1)
-            los, _ = sess.run([loss, training_operation], feed_dict={x: inputs, y: targets})
-            smooth_loss = smooth_loss * 0.999 + los * 0.001
+            l, _ = sess.run([loss, training], feed_dict={x: inputs, y: targets})
+            smooth_loss = smooth_loss * 0.999 + l * 0.001
             if p % 5000 == 0:
                 print()
                 print(p, ": ", smooth_loss)
-                seed = np.expand_dims(inputs[-1], axis=0)
+                seed = np.array([[inputs[0, -1]]])
                 txt = ''
                 for i in range(200):
                     probs = sess.run(char_prob, feed_dict={char_x: seed})
@@ -86,6 +102,24 @@ with tf.Session() as sess:
                     character = ix_to_char[pred]
                     txt = txt + character
                 print(txt)
-end = time.time()
-print("      This thing has taken all this time: ", end - start)
+        saver.save(sess, model_file)
+        print("Model saved")
+    end = time.time()
+    print("      This thing has taken all this time: ", end - start)
 
+# test
+with tf.Session() as sess:
+    print("* Test *")
+    saver = tf.train.import_meta_graph('shakespeare_model.meta')
+    saver.restore(sess, model_file)
+    graph = tf.get_default_graph()
+    seed = encode([int(np.random.uniform(0, vocab_size))])
+    seed = np.array([seed])
+    txt = ''
+    for i in range(200):
+        probs = sess.run(char_prob, feed_dict={char_x: seed})
+        pred = np.random.choice(range(vocab_size), p=probs[0])
+        seed = np.expand_dims(encode([pred]), axis=0)
+        character = ix_to_char[pred]
+        txt = txt + character
+    print(txt)
