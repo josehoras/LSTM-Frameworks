@@ -18,10 +18,10 @@ from keras.layers import Input
 
 
 # Keras callbacks
-def test(epoch, logs):
+def test(logs):
     print("-----------------------------------")
     print("* Test *")
-    print(epoch, logs)
+    print(logs)
     print("-----------------------------------")
     txt = ''
     seed = aux.encode([int(np.random.uniform(0, vocab_size))], vocab_size)
@@ -31,14 +31,11 @@ def test(epoch, logs):
     # print(seed.shape)
     for i in range(400):
         prob, init_state_h, init_state_c = pred_model.predict([seed, init_state_h, init_state_c])
-        # print(len(prob))
         pred = np.random.choice(range(vocab_size), p=prob[-1][0])
-        # print("pred: ", pred)
         character = idx_to_char[pred]
-        # print("character: ", character)
         seed = np.expand_dims(aux.encode([pred], vocab_size), axis=0)
-        txt = txt + character
-    print(txt)
+        txt += character
+    return txt
 
 
 
@@ -52,12 +49,12 @@ class LossHistory(Callback):
         self.smooth_loss.append(self.smooth_loss[-1] * 0.999 + logs.get('loss') * 0.001)
         if batch % 1000 == 0:
             print(batch, " ", self.smooth_loss[-1])
-            test(0, logs)
+            print(test(logs))
             aux.plot(self.losses, self.smooth_loss, it, it_per_epoch, base_name="keras")
 
 
 # load data
-data, char_to_idx, idx_to_char, vocab_size = aux.load('shakespeare.txt')
+data, char_to_idx, idx_to_char, vocab_size = aux.load('quijote.txt')
 print('data has %d characters, %d unique.' % (len(data), vocab_size))
 
 # hyperparameters
@@ -79,7 +76,6 @@ t0 = time()
 
 # Define Keras sequential model
 # callbacks
-test_callback = LambdaCallback(on_epoch_end=lambda epoch, logs: test(epoch, logs))
 history = LossHistory()
 
 # Model API
@@ -110,7 +106,7 @@ pred_model = Model(inputs=[inputs, state_input_h, state_input_c], outputs=[pred_
 model.compile(loss='categorical_crossentropy', optimizer=Adam(lr=learning_rate), metrics=['accuracy'])
 print(model.summary())
 epochs_log = model.fit_generator(data_feed, steps_per_epoch=it_per_epoch, shuffle=False,
-                                 epochs=epochs, callbacks=[test_callback, history], verbose=0)
+                                 epochs=epochs, callbacks=[history], verbose=0)
 
 # final time
 print("Total time was: ", time() - t0)
