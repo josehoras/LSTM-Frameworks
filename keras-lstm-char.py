@@ -1,129 +1,125 @@
 # Import all needed libraries
 import tensorflow as tf
 from tensorflow.contrib import rnn
+import matplotlib.pyplot as plt
+import numpy as np
+from time import time
+import aux_funcs as aux
 from keras.models import Sequential
 from keras.layers import LSTM, Dense, Activation, TimeDistributed
-from keras.objectives import categorical_crossentropy
-from keras.metrics import categorical_accuracy as accuracy
-import numpy as np
-import time
-from keras import backend as K
 from keras.models import load_model
+from keras.callbacks import LambdaCallback, Callback
+from keras.optimizers import Adam, RMSprop, SGD
+from keras.losses import categorical_crossentropy
+from keras.metrics import categorical_accuracy as accuracy
 
-sess = tf.Session()
-K.set_session(sess)
-
-# Load data
-input_file = 'shakespeare.txt'
-data = open(input_file, 'r').read() # should be simple plain text file
-chars = list(set(data))
-char_to_ix = {ch: i for i, ch in enumerate(chars)}
-ix_to_char = {i: ch for i, ch in enumerate(chars)}
-data_size, vocab_size = len(data), len(chars)
-print('data has %d characters, %d unique.' % (data_size, vocab_size))
-print(chars)
+from keras.models import Model
+from keras.layers import Input
 
 
-# 1-of-k encoding
-def encode(seq):
-    enc = np.zeros((1, vocab_size), dtype=int)
-    enc[0][seq[0]] = 1
-    for i in range(1, len(seq)):
-        row = np.zeros((1, vocab_size), dtype=int)
-        row[0][seq[i]] = 1
-        enc = np.append(enc, row, axis=0)
-    return enc
-
-
-# hyperparameters
-seq_length = 100
-hidden_dim = 64
-batch_size = 1
-
-# Training pipeline
-x = tf.placeholder("float", [None, batch_size, vocab_size])
-y = tf.placeholder("float", [None, batch_size, vocab_size])
-layer = LSTM(hidden_dim, return_sequences=True)(x)
-layer = LSTM(hidden_dim, return_sequences=True)(layer)
-layer = TimeDistributed(Dense(vocab_size))(layer)
-probabilities = Activation('softmax')(layer)
-loss = tf.reduce_mean(categorical_crossentropy(y, probabilities))
-acc_value = accuracy(y, probabilities)
-train_step = tf.train.AdamOptimizer(learning_rate=1e-3).minimize(loss)
-
-saver = tf.train.Saver()
-model_file = "./shakespeare_keras_model"
-
-# Initialize all variables
-init_op = tf.global_variables_initializer()
-sess.run(init_op)
-
-# Run training loop
-do_training = False
-if do_training:
-    with sess.as_default():
-        p = 0
-        it = 0
-        for p in range(4001):
-            if p + seq_length + 1 >= len(data):
-                print("w")
-                p = 0  # go to start of data
-            a = [char_to_ix[char] for char in data[p: p + seq_length]]  # Sequence of inputs (numbers)
-            t = [char_to_ix[char] for char in data[p + 1: p + 1 + seq_length]]
-            inputs = np.expand_dims(encode(a), axis=1)
-            targets = np.expand_dims(encode(t), axis=1)
-            train_step.run(feed_dict={x: inputs, y: targets})
-            if it % 1000 == 0:
-                print("Iteration: ", it, "Acc: ", np.sum(acc_value.eval(feed_dict={x: inputs, y: targets})))
-                print("Loss: ", loss.eval(feed_dict={x: inputs, y: targets}))
-                print("-----------------------------------")
-                input_one = np.array([[inputs[0, -1]]])
-                txt = ''
-                for i in range(350):
-                    prob = probabilities.eval(feed_dict={x: input_one})
-                    pred = np.random.choice(range(vocab_size), p=prob[0][0])
-                    character = ix_to_char[pred]
-                    input_one = np.expand_dims(encode([pred]), axis=0)
-                    txt = txt + character
-                print(txt)
-                print("-----------------------------------")
-                print()
-
-            p += 1
-            it += 1
-        all_vars = tf.trainable_variables()
-        for i in range(len(all_vars)):
-            name = all_vars[i].name
-            values = sess.run(name)
-            print('name', name)
-            print('shape', values.shape)
-        saver.save(sess, model_file)
-        print("Model saved")
-
-
-# Test
-with tf.Session() as sess:
+# Keras callbacks
+def test(epoch, logs):
     print("-----------------------------------")
     print("* Test *")
+    print(epoch, logs)
     print("-----------------------------------")
-    saver = tf.train.import_meta_graph('shakespeare_keras_model.meta')
-    saver.restore(sess, model_file)
-    pred = [int(np.random.uniform(0, vocab_size))]
-    input_one = np.expand_dims(encode([pred]), axis=0)
     txt = ''
-    for i in range(350):
-        prob = probabilities.eval(feed_dict={x: input_one})
-        pred = np.random.choice(range(vocab_size), p=prob[0][0])
-        character = ix_to_char[pred]
-        input_one = np.expand_dims(encode([pred]), axis=0)
+    seed = aux.encode([int(np.random.uniform(0, vocab_size))], vocab_size)
+    seed = np.array([seed])
+    init_state_h = np.zeros((1, batch_size, hidden_dim))
+    init_state_c = np.zeros((1, batch_size, hidden_dim))
+    # print(seed.shape)
+    for i in range(400):
+        prob, init_state_h, init_state_c = pred_model.predict([seed, init_state_h, init_state_c])
+        # print(len(prob))
+        pred = np.random.choice(range(vocab_size), p=prob[-1][0])
+        # print("pred: ", pred)
+        character = idx_to_char[pred]
+        # print("character: ", character)
+        seed = np.expand_dims(aux.encode([pred], vocab_size), axis=0)
         txt = txt + character
     print(txt)
-    print("-----------------------------------")
-    print()
 
 
-# Full Keras
+
+class LossHistory(Callback):
+    def on_train_begin(self, logs={}):
+        self.losses = [-np.log(1.0 / vocab_size)]
+        self.smooth_loss = [-np.log(1.0 / vocab_size)]
+
+    def on_batch_end(self, batch, logs={}):
+        self.losses.append(logs.get('loss'))
+        self.smooth_loss.append(self.smooth_loss[-1] * 0.999 + logs.get('loss') * 0.001)
+        if batch % 1000 == 0:
+            print(batch, " ", self.smooth_loss[-1])
+            test(0, logs)
+            aux.plot(self.losses, self.smooth_loss, it, it_per_epoch, base_name="keras")
+
+
+# load data
+data, char_to_idx, idx_to_char, vocab_size = aux.load('shakespeare.txt')
+print('data has %d characters, %d unique.' % (len(data), vocab_size))
+
+# hyperparameters
+learning_rate = 1e-2
+seq_length = 100
+hidden_dim = 500
+batch_size = 1
+epochs = 5
+
+# instantiate generator
+it = 0
+reduce = 1/seq_length
+it_per_epoch = np.int(len(data) / (seq_length*reduce))
+p = (it % it_per_epoch) * seq_length
+data_feed = aux.keras_gen(data, seq_length, char_to_idx, vocab_size, p=p)
+
+# time counting starting here
+t0 = time()
+
+# Define Keras sequential model
+# callbacks
+test_callback = LambdaCallback(on_epoch_end=lambda epoch, logs: test(epoch, logs))
+history = LossHistory()
+
+# Model API
+inputs = Input(shape=(None, vocab_size))
+lstm_layer = LSTM(hidden_dim, return_sequences=True, return_state=True)
+lstm_output, _, _ = lstm_layer(inputs)
+dense_layer = Dense(vocab_size, activation='softmax')
+probabilities = dense_layer(lstm_output)
+model = Model(inputs=inputs, outputs=probabilities)
+
+
+state_input_h = Input(shape=(1, hidden_dim))
+state_input_c = Input(shape=(1, hidden_dim))
+states_inputs = [state_input_h, state_input_c]
+outputs, state_h, state_c = lstm_layer(inputs, initial_state=[state_input_h, state_input_c])
+states = [state_h, state_c]
+pred_outputs = dense_layer(outputs)
+pred_model = Model(inputs=[inputs, state_input_h, state_input_c], outputs=[pred_outputs, state_h, state_c])
+
+
+# Sequential model
 # model = Sequential()
-# model.add(LSTM(hidden_dim, return_sequences=True, input_shape=(1, look_back)))
+# model.add(LSTM(hidden_dim, return_sequences=True, use_bias=True, return_state=False,
+#                input_shape=(None, 67)))
 # model.add(TimeDistributed(Dense(vocab_size)))
 # model.add(Activation('softmax'))
+
+model.compile(loss='categorical_crossentropy', optimizer=Adam(lr=learning_rate), metrics=['accuracy'])
+print(model.summary())
+epochs_log = model.fit_generator(data_feed, steps_per_epoch=it_per_epoch, shuffle=False,
+                                 epochs=epochs, callbacks=[test_callback, history], verbose=0)
+
+# final time
+print("Total time was: ", time() - t0)
+
+# loss history plot
+it = it_per_epoch * epochs
+aux.plot(history.losses, history.smooth_loss, it, it_per_epoch, base_name="keras")
+
+# Save model file
+# model.save('model.h5')
+
+

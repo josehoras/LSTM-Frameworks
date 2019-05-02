@@ -1,14 +1,18 @@
 # Import all needed libraries
 import tensorflow as tf
 from tensorflow.contrib import rnn
-from keras.models import Sequential
-from keras.layers import LSTM, Dense, Activation, TimeDistributed
-from keras.objectives import categorical_crossentropy
-from keras.metrics import categorical_accuracy as accuracy
 import numpy as np
 import time
+
+from keras.models import Sequential
+from keras.layers import LSTM, Dense, Activation, TimeDistributed
 from keras import backend as K
 from keras.models import load_model
+
+from keras.objectives import categorical_crossentropy
+from keras.metrics import categorical_accuracy as accuracy
+
+
 
 sess = tf.Session()
 K.set_session(sess)
@@ -59,7 +63,7 @@ init_op = tf.global_variables_initializer()
 sess.run(init_op)
 
 # Run training loop
-do_training = False
+do_training = True
 if do_training:
     with sess.as_default():
         p = 0
@@ -72,6 +76,9 @@ if do_training:
             t = [char_to_ix[char] for char in data[p + 1: p + 1 + seq_length]]
             inputs = np.expand_dims(encode(a), axis=1)
             targets = np.expand_dims(encode(t), axis=1)
+            if p == 0:
+                print(inputs.shape)
+                print(targets.shape)
             train_step.run(feed_dict={x: inputs, y: targets})
             if it % 1000 == 0:
                 print("Iteration: ", it, "Acc: ", np.sum(acc_value.eval(feed_dict={x: inputs, y: targets})))

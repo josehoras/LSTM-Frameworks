@@ -1,125 +1,100 @@
 # Import all needed libraries
 import tensorflow as tf
-from tensorflow.contrib import rnn
 import numpy as np
 import time
+import aux_funcs as aux
 
-# Load data
-input_file = 'shakespeare.txt'
-data = open(input_file, 'r').read() # should be simple plain text file
-chars = list(set(data))
-char_to_ix = {ch: i for i, ch in enumerate(chars)}
-ix_to_char = {i: ch for i, ch in enumerate(chars)}
-data_size, vocab_size = len(data), len(chars)
-print('data has %d characters, %d unique.' % (data_size, vocab_size))
-print(chars)
-
-
-# 1-of-k encoding
-def encode(seq):
-    enc = np.zeros((1, vocab_size), dtype=int)
-    enc[0][seq[0]] = 1
-    for i in range(1, len(seq)):
-        row = np.zeros((1, vocab_size), dtype=int)
-        row[0][seq[i]] = 1
-        enc = np.append(enc, row, axis=0)
-    return enc
-
+############
+### Main ###
+############
+# load data
+data, char_to_idx, idx_to_char, vocab_size = aux.load('shakespeare.txt')
+print('data has %d characters, %d unique.' % (len(data), vocab_size))
 
 # hyperparameters
-seq_length = 10
-hidden_dim = 64
+learning_rate = 1e-2
+seq_length = 100
+hidden_dim = 500
 batch_size = 1
 
 # model architecture
-x = tf.placeholder("float", [seq_length, batch_size, vocab_size])
-y = tf.placeholder("float", [seq_length, batch_size, vocab_size])
-
-lstm_layer = rnn.LSTMCell(hidden_dim, forget_bias=1)
-outputs, _ = tf.nn.dynamic_rnn(lstm_layer, x, dtype=tf.float32)
-outputs = tf.unstack(outputs, axis=0)
-
-out_weights = tf.Variable(tf.random_normal([hidden_dim, vocab_size]))
-out_bias = tf.Variable(tf.random_normal([vocab_size]))
-logits = [tf.matmul(output, out_weights) + out_bias for output in outputs]
-probabilities = [tf.nn.softmax(logit) for logit in logits]
-
-# model evaluation
-cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=logits)
-loss = tf.reduce_mean(cross_entropy)
-optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
-training = optimizer.minimize(loss)
-saver = tf.train.Saver()
-
-# same with single char to generate predictions
-char_x = tf.placeholder("float", [1, batch_size, vocab_size])
-char_out, _ = tf.nn.dynamic_rnn(lstm_layer, char_x, dtype="float32")
-char_logits = tf.matmul(char_out[0], out_weights) + out_bias
-char_prob = tf.nn.softmax(char_logits)
+def model(input_data, init_state):
+    # lstm layer
+    lstm_cell = tf.nn.rnn_cell.LSTMCell(hidden_dim, state_is_tuple=True)
+    rnn_tuple_state = tf.nn.rnn_cell.LSTMStateTuple(init_state[0], init_state[1])
+    # affine layer
+    out_weights = tf.get_variable("out_w", shape=[hidden_dim, vocab_size])
+    out_bias = tf.get_variable("out_b", shape=[vocab_size])
+    # model
+    outputs, current_state = tf.nn.dynamic_rnn(lstm_cell, input_data, initial_state=rnn_tuple_state,
+                                        time_major=True, dtype=tf.float32)
+    logits = tf.matmul(outputs[:, 0, :], out_weights) + out_bias
+    probabilities = tf.nn.softmax(logits, name="probabilities")
+    return logits, probabilities, current_state
 
 
-# training
-model_file = './shakespeare_model'
-model = True
-p = 0
-smooth_loss = (-np.log(1.0 / vocab_size) * seq_length) / seq_length  # loss at iteration 0
-train_sess = False
-if train_sess:
-    with tf.Session() as sess:
-        start = time.time()
-        print("* Second Session *")
-        if model:
-            saver = tf.train.import_meta_graph('shakespeare_model.meta')
-            saver.restore(sess, model_file)
-            graph = tf.get_default_graph()
-            print("Model restored...")
-            all_vars = tf.trainable_variables()
-            for i in range(len(all_vars)):
-                name = all_vars[i].name
-                values = sess.run(name)
-                print('name', name)
-                print('shape', values.shape)
-        else:
-            sess.run(tf.global_variables_initializer())
-        for p in range(10001):
-            if p + seq_length + 1 >= len(data):
-                p = 0 # go to start of data
-            a = [char_to_ix[char] for char in data[p: p + seq_length]]  # Sequence of inputs (numbers)
-            t = [char_to_ix[char] for char in data[p + 1: p + 1 + seq_length]]
-            inputs = np.expand_dims(encode(a), axis=1)
-            targets = np.expand_dims(encode(t), axis=1)
-            l, _ = sess.run([loss, training], feed_dict={x: inputs, y: targets})
-            smooth_loss = smooth_loss * 0.999 + l * 0.001
-            if p % 5000 == 0:
-                print()
-                print(p, ": ", smooth_loss)
-                seed = np.array([[inputs[0, -1]]])
-                txt = ''
-                for i in range(200):
-                    probs = sess.run(char_prob, feed_dict={char_x: seed})
-                    pred = np.random.choice(range(vocab_size), p=probs[0])
-                    seed = np.expand_dims(encode([pred]), axis=0)
-                    character = ix_to_char[pred]
-                    txt = txt + character
-                print(txt)
-        saver.save(sess, model_file)
-        print("Model saved")
-    end = time.time()
-    print("      This thing has taken all this time: ", end - start)
+def opt(logits, y):
+    # model evaluation
+    cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=logits)
+    loss = tf.reduce_mean(cross_entropy, name="loss")
+    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+    # optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+    training = optimizer.minimize(loss, name="training")
+    return loss, training
 
-# test
-with tf.Session() as sess:
-    print("* Test *")
-    saver = tf.train.import_meta_graph('shakespeare_model.meta')
-    saver.restore(sess, model_file)
-    graph = tf.get_default_graph()
-    seed = encode([int(np.random.uniform(0, vocab_size))])
+
+def sample(sample_length, session):
+    seed = aux.encode([int(np.random.uniform(0, vocab_size))], vocab_size)
     seed = np.array([seed])
+    _char_state = np.zeros((2, batch_size, hidden_dim))
     txt = ''
-    for i in range(200):
-        probs = sess.run(char_prob, feed_dict={char_x: seed})
-        pred = np.random.choice(range(vocab_size), p=probs[0])
-        seed = np.expand_dims(encode([pred]), axis=0)
-        character = ix_to_char[pred]
+    for i in range(sample_length):
+        char_probs, _char_state = session.run([probs, current_state],
+                                           feed_dict={x: seed, init_state: _char_state})
+        pred = np.random.choice(range(vocab_size), p=char_probs[0])
+        seed = np.expand_dims(aux.encode([pred], vocab_size), axis=0)
+        character = idx_to_char[pred]
         txt = txt + character
-    print(txt)
+    return txt
+
+
+# TensorFlow input variables
+x = tf.placeholder("float", [None, batch_size, vocab_size])
+y = tf.placeholder("float", [None, batch_size, vocab_size])
+init_state = tf.placeholder(tf.float32, [2, batch_size, hidden_dim])
+# model outputs
+logits, probs, current_state = model(x, init_state)
+# optimization outputs
+loss, training = opt(logits, y)
+
+# history variables
+loss_hist = [-np.log(1.0 / vocab_size)]  # loss at iteration 0
+smooth_loss = loss_hist.copy()
+it = 0
+it_per_epoch = len(data) / seq_length
+p = (it % it_per_epoch) * seq_length
+data_feed = aux.gen(data, seq_length, char_to_idx, vocab_size, p=p)
+elapsed_time = 0
+# training
+start = time.time()
+with tf.Session() as sess:
+    sess.run(tf.global_variables_initializer())
+    _current_state = np.zeros((2, batch_size, hidden_dim))
+    for p in range(4001):
+        # show progress
+        if p % 100 == 0:
+            print('\niter %d, loss: %f' % (p, smooth_loss[-1]))  # print progress
+            print(sample(600, sess))
+            aux.plot(loss_hist, smooth_loss, it, it_per_epoch, base_name="tensor")
+        # collect data for next step
+        inputs, targets = (next(data_feed))
+        l, _, _current_state = sess.run([loss, training, current_state],
+                                        feed_dict={x: inputs,
+                                                   y: targets,
+                                                   init_state: _current_state})
+        loss_hist.append(l)
+        smooth_loss.append(smooth_loss[-1] * 0.999 + loss_hist[-1] * 0.001)
+
+end = time.time()
+print("      This thing has taken all this time: ", end - start, "\n")
+
