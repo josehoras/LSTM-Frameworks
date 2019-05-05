@@ -138,72 +138,52 @@ def lstm_backward(dh, cache):
     return dx, dh0, dWx, dWh, db
 
 
-def gen(data, seq_length, p=0):
-    p = int(p)
-    print(p)
-    while 1:
-        if p + seq_length + 1 >= len(data):
-            print("Aqui hemos llegado: ", p, len(data))
-            prev_h = np.zeros((1, hidden_dim))  # reset LSTM memory
-            p = 0  # go to start of data
-        x = [char_to_idx[char] for char in data[p: p + seq_length]]  # Sequence of inputs (numbers)
-        t = [char_to_idx[char] for char in data[1 + p: 1 + p + seq_length]]
-        inputs = aux.encode(x, input_dim)  # shape: (seq_length, input_dim)
-        targets = aux.encode(t, input_dim)
-        p = p + seq_length
-        yield inputs, targets
-
-
-def sample(x, h, sample_len):
-    text = []
+def sample(x, h, txt_length):
+    txt = ""
     c = np.zeros_like(h)
-    for i in range(sample_len):
+    for i in range(txt_length):
         h, c, _ = lstm_step_forward(x, h, c, Wx, Wh, b)
         scores = np.dot(h, Why.T) + by
-        p = np.exp(scores) / np.sum(np.exp(scores))
-        out = np.random.choice(range(input_dim), p=p[0])
-        x = np.zeros(input_dim)
-        x[out] = 1
-        next_character = idx_to_char[out]
-        text.append(next_character)
-    txt = ''.join(char for char in text)
+        prob = np.exp(scores) / np.sum(np.exp(scores))
+        pred = np.random.choice(range(input_dim), p=prob[0])
+        x = aux.encode([pred], vocab_size)
+        next_character = idx_to_char[pred]
+        txt += next_character
     return txt
 
 
 ############
 ### Main ###
 ############
-data_name = 'shakespeare'
-
-# load data
-input_file = data_name +'.txt'
-data, char_to_idx, idx_to_char, vocab_size = aux.load(input_file)
-print('data has %d characters, %d unique.' % (len(data), vocab_size))
 # hyperparameters
 learning_rate = 1e-2
 seq_length = 100
+
+# load data
+data_name = 'quijote'
+input_file = data_name +'.txt'
+data, char_to_idx, idx_to_char, vocab_size = aux.load(input_file)
+print('data has %d characters, %d unique.' % (len(data), vocab_size))
+data_feed = aux.python_gen(data, seq_length, char_to_idx, vocab_size)
+
+# model dimensions (more hyperparameters)
 input_dim = vocab_size
 hidden_dim = 250
-batch_size = 1
-epochs = 1
+
 # model parameters
 Wx = np.random.randn(input_dim, 4*hidden_dim) / np.sqrt(4*hidden_dim)   # input to hidden
 Wh = np.random.randn(hidden_dim, 4*hidden_dim) / np.sqrt(4*hidden_dim)  # hidden to hidden
 b = np.zeros(4*hidden_dim)                                              # hidden bias
 Why = np.random.randn(vocab_size, hidden_dim) / np.sqrt(hidden_dim)
 by = np.zeros(vocab_size)
+
 # history variables
-loss = [-np.log(1.0 / vocab_size)]  # loss at iteration 0
+loss = [-np.log(1.0 / vocab_size)]      # loss at iteration 0
 smooth_loss = loss.copy()
 it = 0
-elapsed_time = 0
-
-# infinite loop to go over and over the data
 it_per_epoch = len(data) / seq_length
-data_feed = gen(data, seq_length, p=(it % it_per_epoch) * seq_length)
 prev_h = np.zeros((1, hidden_dim))      # reset LSTM memory
-# time counting starting here
-t0 = time()
+t0 = time()                             # time counting starting here
 while True:
     # collect data for next step
     inputs, targets = (next(data_feed))
@@ -217,11 +197,11 @@ while True:
     it += 1
 
     # forward pass
-    h_states, h_cache = lstm_forward(inputs, prev_h, Wx, Wh, b)     # (seq_length, hidden_dim)
-    scores = np.dot(h_states, Why.T) + by                           # (seq_length, input_dim)
-    probs = np.exp(scores) / np.sum(np.exp(scores), axis=1, keepdims=True)  # (seq_length, input_dim)
-    correct_logprobs = -np.log(probs[range(seq_length), np.argmax(targets, axis=1)])# (seq_length)
-    loss.append(np.sum(correct_logprobs) / seq_length)                                    # (1)
+    h_states, h_cache = lstm_forward(inputs, prev_h, Wx, Wh, b)                         # (seq_length, hidden_dim)
+    scores = np.dot(h_states, Why.T) + by                                               # (seq_length, input_dim)
+    probs = np.exp(scores) / np.sum(np.exp(scores), axis=1, keepdims=True)              # (seq_length, input_dim)
+    correct_logprobs = -np.log(probs[range(seq_length), np.argmax(targets, axis=1)])    # (seq_length)
+    loss.append(np.sum(correct_logprobs) / seq_length)                                  # (1)
     smooth_loss.append(smooth_loss[-1] * 0.999 + loss[-1] * 0.001)
 
     # Backward pass

@@ -34,7 +34,21 @@ def encode(seq, vocab_size):                            # 1-of-k encoding
     return enc
 
 
-def gen(data, seq_length, char_to_idx, vocab_size, p=0):
+def python_gen(data, seq_length, char_to_idx, vocab_size, p=0):
+    p = int(p)
+    print(p)
+    while 1:
+        if p + seq_length + 1 >= len(data):
+            print("Aqui hemos llegado: ", p, len(data))
+            p = 0  # go to start of data
+        x = [char_to_idx[char] for char in data[p: p + seq_length]]  # Sequence of inputs (numbers)
+        t = [char_to_idx[char] for char in data[1 + p: 1 + p + seq_length]]
+        inputs = encode(x, vocab_size)  # shape: (seq_length, input_dim)
+        targets = encode(t, vocab_size)
+        p = p + seq_length
+        yield inputs, targets
+
+def tf_gen(data, seq_length, char_to_idx, vocab_size, p=0):
     p = int(p)
     while 1:
         if p + seq_length + 1 >= len(data):
@@ -56,7 +70,7 @@ def keras_gen(data, seq_length, char_to_idx, vocab_size, p=0):
             p = 0  # go to start of data
         a = [char_to_idx[char] for char in data[p: p + seq_length]]  # Sequence of inputs (numbers)
         t = [char_to_idx[char] for char in data[1 + p: 1 + p + seq_length]]
-        inputs = np.expand_dims(encode(a, vocab_size), axis=0)  # shape: (seq_length, input_dim)
+        inputs = np.expand_dims(encode(a, vocab_size), axis=0)  # shape: (1, seq_length, input_dim)
         targets = np.expand_dims(encode(t, vocab_size), axis=0)
         # print(targets.shape)
         p = p + seq_length
