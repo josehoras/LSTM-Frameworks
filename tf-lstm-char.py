@@ -101,4 +101,4 @@ with tf.Session() as sess:
         smooth_loss.append(smooth_loss[-1] * 0.999 + loss_hist[-1] * 0.001)
 
 end = time.time()
-print("      Training time: ", end - start, "\n")
+print("\nTraining time: ", end - start, "\n")
