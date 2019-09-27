@@ -89,7 +89,6 @@ with tf.Session() as sess:
         if p % 100 == 0:
             print('\niter %d, loss: %f' % (p, smooth_loss[-1]))  # print progress
             print(sample(600, sess))
-            saver.save(sess, save_path + 'model')
             aux.plot(loss_hist, smooth_loss, it, it_per_epoch, base_name=save_path + "tensor")
 
         # collect data for next step
