@@ -7,21 +7,21 @@ import os
 
 def load(input_file):
     data = open(input_file, 'r').read()     # should be simple plain text file
-    chars = list(set(data))
+    chars = sorted(set(data))
     vocab_size = len(chars)
     ch2ix = {ch: i for i, ch in enumerate(chars)}
     ix2ch = {i: ch for i, ch in enumerate(chars)}
     return data, ch2ix, ix2ch, vocab_size
 
 
-def save_model(data_vars, hyperparams, model_vars, hist_vars, t0, data_name):
-    hist_vars[3] += time() - t0
-    if os.path.isfile(data_name + '_model.p'):
-        os.rename(data_name + '_model.p', data_name + '_model_back.p')
-    pickle.dump((data_vars, hyperparams, model_vars), open(data_name + '_model.p', 'wb'))
-    if os.path.isfile(data_name + '_hist.p'):
-        os.rename(data_name + '_hist.p', data_name + '_hist_back.p')
-    pickle.dump(hist_vars, open(data_name + '_hist.p', 'wb'))
+# def save_model(data_vars, hyperparams, model_vars, hist_vars, t0, data_name):
+#     hist_vars[3] += time() - t0
+#     if os.path.isfile(data_name + '_model.p'):
+#         os.rename(data_name + '_model.p', data_name + '_model_back.p')
+#     pickle.dump((data_vars, hyperparams, model_vars), open(data_name + '_model.p', 'wb'))
+#     if os.path.isfile(data_name + '_hist.p'):
+#         os.rename(data_name + '_hist.p', data_name + '_hist_back.p')
+#     pickle.dump(hist_vars, open(data_name + '_hist.p', 'wb'))
 
 
 def encode(seq, vocab_size):                            # 1-of-k encoding
