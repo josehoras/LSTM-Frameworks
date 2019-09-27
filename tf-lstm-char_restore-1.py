@@ -53,6 +53,8 @@ h_states, current_state = tf.nn.dynamic_rnn(lstm_cell, x, initial_state=rnn_tupl
 logits = tf.matmul(h_states[:, 0, :], dense_weights) + dense_bias
 probabilities = tf.nn.softmax(logits, name="probabilities")
 
+print(h_states)
+print(current_state)
 # Bookkeeping variables
 save_path = 'tensor_model/'
 
