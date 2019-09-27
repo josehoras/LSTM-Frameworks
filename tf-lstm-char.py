@@ -65,7 +65,6 @@ optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
 training = optimizer.minimize(loss, name="training")
 
 # Bookkeeping variables
-save_path = 'tensor_model/'
 loss_hist = [-np.log(1.0 / vocab_size)]  # loss at iteration 0
 smooth_loss = loss_hist.copy()
 it = 0
@@ -73,9 +72,6 @@ it_per_epoch = len(data) / seq_length
 p = (it % it_per_epoch) * seq_length
 elapsed_time = 0
 start = time.time()
-
-# Saver
-saver = tf.train.Saver()
 
 # Defining variables initializer
 init_op = tf.global_variables_initializer()
