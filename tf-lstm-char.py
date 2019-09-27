@@ -5,6 +5,7 @@ import time
 import aux_funcs as aux
 
 
+# Function to sample text using a model trained on a certain text corpus
 def sample(sample_length, session):
     seed = aux.encode([int(np.random.uniform(0, vocab_size))], vocab_size)
     seed = np.array([seed])
@@ -23,25 +24,29 @@ def sample(sample_length, session):
 ############
 ### Main ###
 ############
-# load data
-data_name = 'quijote'
-input_file = data_name +'.txt'
-data, char_to_idx, idx_to_char, vocab_size = aux.load(input_file)
-print('data has %d characters, %d unique.' % (len(data), vocab_size))
-
 # hyperparameters
 learning_rate = 1e-2
 seq_length = 100
 hidden_dim = 500
 batch_size = 1
 
+# load data
+data_name = 'shakespeare'
+input_file = data_name +'.txt'
+data, char_to_idx, idx_to_char, vocab_size = aux.load(input_file)
+print('data has %d characters, %d unique.' % (len(data), vocab_size))
+print("First 4 characters are: ", idx_to_char[0], idx_to_char[1], idx_to_char[2], idx_to_char[3])
+
+# Create data generator
+data_feed = aux.tf_gen(data, seq_length, char_to_idx, vocab_size)
+
 # TensorFlow input variables
-x = tf.placeholder("float", [None, batch_size, vocab_size])
-y = tf.placeholder("float", [None, batch_size, vocab_size])
-init_state = tf.placeholder(tf.float32, [2, batch_size, hidden_dim])
+x = tf.placeholder("float", [None, batch_size, vocab_size], name="x")
+y = tf.placeholder("float", [None, batch_size, vocab_size], name="y")
+init_state = tf.placeholder(tf.float32, [2, batch_size, hidden_dim], name="init_state")
 # model architecture
 # lstm layer
-lstm_cell = tf.nn.rnn_cell.LSTMCell(hidden_dim, state_is_tuple=True)
+lstm_cell = tf.nn.rnn_cell.LSTMCell(hidden_dim, state_is_tuple=True, name="celula")
 rnn_tuple_state = tf.nn.rnn_cell.LSTMStateTuple(init_state[0], init_state[1])
 # dense layer parameters
 dense_weights = tf.get_variable("out_w", shape=[hidden_dim, vocab_size])
@@ -59,34 +64,42 @@ optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
 # optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
 training = optimizer.minimize(loss, name="training")
 
-# history variables
+# Bookkeeping variables
+save_path = 'tensor_model/'
 loss_hist = [-np.log(1.0 / vocab_size)]  # loss at iteration 0
 smooth_loss = loss_hist.copy()
 it = 0
 it_per_epoch = len(data) / seq_length
 p = (it % it_per_epoch) * seq_length
-data_feed = aux.tf_gen(data, seq_length, char_to_idx, vocab_size, p=p)
 elapsed_time = 0
-# training
 start = time.time()
+
+# Saver
+saver = tf.train.Saver()
+
+# Defining variables initializer
+init_op = tf.global_variables_initializer()
+
+# Training
 with tf.Session() as sess:
-    sess.run(tf.global_variables_initializer())
+    sess.run(init_op)
     _current_state = np.zeros((2, batch_size, hidden_dim))
-    for p in range(4001):
-        # show progress
+    for p in range(501):
+        # show progress and bookkeeping
         if p % 100 == 0:
             print('\niter %d, loss: %f' % (p, smooth_loss[-1]))  # print progress
             print(sample(600, sess))
-            aux.plot(loss_hist, smooth_loss, it, it_per_epoch, base_name="tensor")
+            saver.save(sess, save_path + 'model')
+            aux.plot(loss_hist, smooth_loss, it, it_per_epoch, base_name=save_path + "tensor")
+
         # collect data for next step
         inputs, targets = (next(data_feed))
-        l, _, _current_state = sess.run([loss, training, current_state],
+        _loss, _, _current_state = sess.run([loss, training, current_state],
                                         feed_dict={x: inputs,
                                                    y: targets,
                                                    init_state: _current_state})
-        loss_hist.append(l)
+        loss_hist.append(_loss)
         smooth_loss.append(smooth_loss[-1] * 0.999 + loss_hist[-1] * 0.001)
 
 end = time.time()
-print("      This thing has taken all this time: ", end - start, "\n")
-
+print("      Training time: ", end - start, "\n")
