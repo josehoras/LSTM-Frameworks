@@ -53,13 +53,6 @@ h_states, current_state = tf.nn.dynamic_rnn(lstm_cell, x, initial_state=rnn_tupl
 logits = tf.matmul(h_states[:, 0, :], dense_weights) + dense_bias
 probabilities = tf.nn.softmax(logits, name="probabilities")
 
-# model evaluation
-cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(labels=y, logits=logits)
-loss = tf.reduce_mean(cross_entropy, name="loss")
-optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-# optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
-training = optimizer.minimize(loss, name="training")
-
 # Bookkeeping variables
 save_path = 'tensor_model/'
 
