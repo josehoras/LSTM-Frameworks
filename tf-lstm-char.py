@@ -37,7 +37,7 @@ data, char_to_idx, idx_to_char, vocab_size = aux.load(input_file)
 print('data has %d characters, %d unique.' % (len(data), vocab_size))
 print("First 4 characters are: ", idx_to_char[0], idx_to_char[1], idx_to_char[2], idx_to_char[3])
 
-# Create data generator
+# Create training data generator
 data_feed = aux.tf_gen(data, seq_length, char_to_idx, vocab_size)
 
 # TensorFlow input variables
