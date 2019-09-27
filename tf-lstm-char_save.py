@@ -63,6 +63,8 @@ loss = tf.reduce_mean(cross_entropy, name="loss")
 optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
 # optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
 training = optimizer.minimize(loss, name="training")
+# Defining variables initializer
+init_op = tf.global_variables_initializer()
 
 # Bookkeeping variables
 save_path = 'tensor_model/'
@@ -76,9 +78,6 @@ start = time.time()
 
 # Saver
 saver = tf.train.Saver()
-
-# Defining variables initializer
-init_op = tf.global_variables_initializer()
 
 # Training
 with tf.Session() as sess:
