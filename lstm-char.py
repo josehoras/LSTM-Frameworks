@@ -28,12 +28,9 @@ def lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b):
     - next_c: Next cell state, of shape (N, H)
     - cache: Tuple of values needed for backward pass.
     """
-    _, H = prev_h.shape
     a = prev_h.dot(Wh) + x.dot(Wx) + b      # (1, 4*hidden_dim)
-    i = sigmoid(a[:, 0:H])
-    f = sigmoid(a[:, H:2*H])
-    o = sigmoid(a[:, 2*H:3*H])
-    g = np.tanh(a[:, 3*H:4*H])              # (1, hidden_dim)
+    i,f,g,o = np.split(a, 4, axis=1) # Input, Forget,g (tanh-Activation) , Output
+    i,f,g,o = sigmoid(i), sigmoid(f), np.tanh(g), sigmoid(o) # (1, hidden_dim)
     next_c = f * prev_c + i * g             # (1, hidden_dim)
     next_h = o * (np.tanh(next_c))          # (1, hidden_dim)
     cache = x, prev_h, prev_c, Wx, Wh, b, a, i, f, o, g, next_c
@@ -59,10 +56,8 @@ def lstm_forward(x, prev_h, Wx, Wh, b):
         prev_h = next_h
         prev_c = next_c
         cache.append(next_cache)
-        if i > 0:
-            h = np.append(h, next_h, axis=0)
-        else:
-            h = next_h
+        if i > 0: h = np.append(h, next_h, axis=0)
+        else: h = next_h
     return h, cache
 
 
@@ -93,7 +88,7 @@ def lstm_step_backward(dnext_h, dnext_c, cache):
     df = f * (1 - f) * dfp
     di = i * (1 - i) * dip
     dg = (1 - g ** 2) * dgp
-    da = np.concatenate((di, df, do, dg), axis=1)
+    da = np.concatenate((di, df, dg, do), axis=1)
     db = np.sum(da, axis=0)
     dx = da.dot(Wx.T)
     dprev_h = da.dot(Wh.T)
